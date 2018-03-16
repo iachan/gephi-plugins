@@ -18,10 +18,14 @@ Notice in each file and include the License files at
 /cddl-1.0.txt and /gpl-3.0.txt.
 Portions Copyrighted 2011 Gephi Consortium.
 
-Updated by Daniel Iachan 2017, for Gephi 0.9.1
+Updated by Jedidiah Yanez-Sierra 2018, for Gephi 0.9.1
  */
 package org.iachan.polygonshapednodes;
 
+import com.itextpdf.awt.PdfGraphics2D;
+import com.itextpdf.text.pdf.PdfContentByte;
+import com.itextpdf.text.pdf.PdfGState;
+import com.itextpdf.text.pdf.PdfTemplate;
 import java.awt.*;
 import org.gephi.graph.api.Node;
 import org.gephi.preview.api.*;
@@ -31,6 +35,7 @@ import org.gephi.preview.spi.Renderer;
 import org.gephi.preview.types.DependantColor;
 import org.openide.util.NbBundle;
 import org.openide.util.lookup.ServiceProvider;
+import org.w3c.dom.Element;
 
 /**
  * Extends and replaces default node renderer and implements polygon shaped nodes.
@@ -61,7 +66,8 @@ public class PolygonShapedNodes extends NodeRenderer {
                     }
                 } catch(Exception e) {}
                 if(renderAsNgon != -1) {
-                    renderPolygonG2D(item, (G2DTarget) target, properties, renderAsNgon);
+                    Graphics2D graphics = ((G2DTarget) target).getGraphics();
+                    renderPolygonG2D(item, graphics, properties, renderAsNgon);
                 }
                 else {
                     super.render(item, target, properties);
@@ -80,7 +86,7 @@ public class PolygonShapedNodes extends NodeRenderer {
         
     }
 
-    public void renderPolygonG2D(Item item, G2DTarget target, PreviewProperties properties, int numSides) {
+    public void renderPolygonG2D(Item item, Graphics2D graphics, PreviewProperties properties, int numSides) {
         //Get data about the polygon to be rendered
         Float x = item.getData(NodeItem.X);
         Float y = item.getData(NodeItem.Y);
@@ -92,9 +98,6 @@ public class PolygonShapedNodes extends NodeRenderer {
         if (alpha > 255) {
             alpha = 255;
         }
-
-        //Graphics
-        Graphics2D graphics = target.getGraphics();
 
         //Determine vertices of polygon and create Shape object to be drawn/filled
         int[] xpoints = new int[numSides];
@@ -128,11 +131,115 @@ public class PolygonShapedNodes extends NodeRenderer {
     }
     
     public void renderPolygonPDF(Item item, PDFTarget target, PreviewProperties properties) {
-        //Not implemented
+        Float x = item.getData(NodeItem.X);
+        Float y = item.getData(NodeItem.Y);
+        Float size = item.getData(NodeItem.SIZE);
+        size /= 2f;
+        Color color = item.getData(NodeItem.COLOR);
+        Color borderColor = ((DependantColor) properties.getValue(PreviewProperty.NODE_BORDER_COLOR)).getColor(color);
+        float borderSize = properties.getFloatValue(PreviewProperty.NODE_BORDER_WIDTH);
+        float alpha = properties.getFloatValue(PreviewProperty.NODE_OPACITY) / 100f;
+
+        int renderAsNgon = -1;
+        PdfContentByte cb = target.getContentByte();
+        cb.setRGBColorStroke(borderColor.getRed(), borderColor.getGreen(), borderColor.getBlue());
+        cb.setLineWidth(borderSize);
+        cb.setRGBColorFill(color.getRed(), color.getGreen(), color.getBlue());
+        if (alpha < 1f) {
+            cb.saveState();
+            PdfGState gState = new PdfGState();
+            gState.setFillOpacity(alpha);
+            gState.setStrokeOpacity(alpha);
+            cb.setGState(gState);
+        }
+        
+        try {
+            Node n = (Node) item.getSource();
+            if((Integer) n.getAttribute("Polygon") >= 3) {
+                renderAsNgon = (Integer) n.getAttribute("Polygon");
+            }
+        } catch(Exception e) {}
+        if(renderAsNgon != -1) {
+            item.setData(NodeItem.X, size);
+            item.setData(NodeItem.Y, size);
+            PdfTemplate template = cb.createTemplate(size*2, size*2);
+            Graphics2D g2d = new PdfGraphics2D(template, size*2, size*2);
+            renderPolygonG2D(item, g2d, properties, renderAsNgon); 
+            g2d.dispose();
+            cb.addTemplate(template, x-size, -y-size);
+        }else {
+            cb.circle(x, -y, size);
+            if (borderSize > 0) {
+                cb.fillStroke();
+            } else {
+                cb.fill();
+            }
+        }
+        
+        if (alpha < 1f) {
+            cb.restoreState();
+        }
+    }
+    
+    public static String idAsClassAttribute(Object id) {
+        return "id_" + id.toString().replaceAll(" ", "_");
     }
 
     public void renderPolygonSVG(Item item, SVGTarget target, PreviewProperties properties) {
-        //Not implemented
+        Node node = (Node) item.getSource();
+        //Params
+        Float x = item.getData(NodeItem.X);
+        Float y = item.getData(NodeItem.Y);
+        Float size = item.getData(NodeItem.SIZE);
+        
+        Color color = item.getData(NodeItem.COLOR);
+        Color borderColor = ((DependantColor) properties.getValue(PreviewProperty.NODE_BORDER_COLOR)).getColor(color);
+        float borderSize = properties.getFloatValue(PreviewProperty.NODE_BORDER_WIDTH);
+        float alpha = properties.getFloatValue(PreviewProperty.NODE_OPACITY) / 100f;
+        
+        int renderAsNgon = -1;
+        try {
+            Node n = (Node) item.getSource();
+            if ((Integer) n.getAttribute("Polygon") >= 3) {
+                renderAsNgon = (Integer) n.getAttribute("Polygon");
+            }
+        } catch (Exception e) {
+        }
+        
+        Element nodeElem;
+        if (renderAsNgon != -1 && renderAsNgon !=0 ) {
+            nodeElem = target.createElement("polygon");
+            String points = new String();
+            for (int i = 0; i < renderAsNgon; i++){
+                double angle = 2 * Math.PI / renderAsNgon;
+                float calcX, calcY;
+                if (renderAsNgon % 2 == 0) {
+                    calcX = (float)(x + (size * .6) * Math.cos(i * angle - Math.PI/4));
+                    calcY = (float)(y - (size * .6) * Math.sin(i * angle - Math.PI/4));
+                } else {
+                    calcX = (float)(x + (size * .6) * Math.cos(i * angle));
+                    calcY = (float)(y - (size * .6) * Math.sin(i * angle));
+                }
+                points+=calcX + "," + calcY+" ";
+            }
+            nodeElem.setAttribute("points", points.trim());
+        } else {
+            size /= 2f;
+            nodeElem = target.createElement("circle");
+            nodeElem.setAttribute("cx", x.toString());
+            nodeElem.setAttribute("cy", y.toString());
+            nodeElem.setAttribute("r", size.toString());
+        }
+
+        nodeElem.setAttribute("class", PolygonShapedNodes.idAsClassAttribute(node.getId()));
+        nodeElem.setAttribute("fill", target.toHexString(color));
+        nodeElem.setAttribute("fill-opacity", "" + alpha);
+        if (borderSize > 0) {
+            nodeElem.setAttribute("stroke", target.toHexString(borderColor));
+            nodeElem.setAttribute("stroke-width",Float.toString(borderSize * target.getScaleRatio()));
+            nodeElem.setAttribute("stroke-opacity", "" + alpha);
+        }
+        target.getTopElement(SVGTarget.TOP_NODES).appendChild(nodeElem);
     }
 
     @Override
