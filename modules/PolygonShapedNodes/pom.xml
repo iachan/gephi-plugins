@@ -9,7 +9,7 @@
 
     <groupId>comsort</groupId>
     <artifactId>polygon-shaped-nodes</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <packaging>nbm</packaging>
 
     <name>Polygon Shaped Nodes</name>
@@ -36,6 +36,16 @@
             <groupId>org.netbeans.api</groupId>
             <artifactId>org-openide-util-lookup</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.gephi</groupId>
+            <artifactId>core-library-wrapper</artifactId>
+            <version>0.9.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.itextpdf</groupId>
+            <artifactId>itextpdf</artifactId>
+            <version>5.2.0</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -57,5 +67,3 @@
         </plugins>
     </build>
 </project>
-
-
